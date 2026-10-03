@@ -1,0 +1,97 @@
+# Replit Prompt: Clickable Client-Confirmation Prototype
+
+Copy everything below the line into Replit Agent.
+
+---
+
+## ROLE AND GOAL
+Build a **clickable, front-end-first prototype** of a "Product Data Management & Analytics Platform" for a pharmacy business. The purpose is **not production code**. It is to let the client click through every workflow and confirm "yes, this is what we want" or tell us what to change. Use **realistic mock data only**. No real integrations (no real WhatsApp, no real LLM, no real printer, no real ERP). Every simulated feature must be clearly labelled "Simulated in prototype".
+
+## TECH
+React + TypeScript + Vite, Tailwind, shadcn/ui, TanStack Table (client-side for prototype), SheetJS (really parse uploaded .xlsx for the demo, and really export .xlsx), Zustand or React state for in-memory data, React Router. Seed data in a local JSON/TS file. No auth provider: a **role switcher** in the top bar (Admin / Manager / Pharmacist / Staff) that changes visible menus and actions. Desktop-first, clean, professional, light theme, status badges with colors and icons (not color alone).
+
+## GLOBAL LAYOUT
+Left sidebar: Dashboard, Imports, Products, Suppliers, Matching Queue (with count badge), Ask (AI Query), WhatsApp Inbox, Prescriptions, Admin. Top bar: global product search, role switcher, "Data as of" chip. A small **"Prototype: sample data"** banner. A floating **"Client feedback"** button on every screen that opens a drawer with a text box and "Looks right / Needs change" toggle, and stores the notes in memory plus a "Download feedback (.json)" button.
+
+## SEED DATA (generate realistically, Indian pharmacy context)
+- ~60 products with name, strength, pack (e.g., "Paracetamol 500mg Tab 10s"), group/family (Analgesics, Antibiotics, Diabetes, Cardiac, Vitamins, Cough & Cold…), 1–3 aliases each.
+- 3 stores: "Main Store", "Branch 2", "Branch 3".
+- 12 suppliers; some products supplied by 2–3 suppliers.
+- 12 months of monthly sales per product/store; stock snapshot as of a fixed date; at least 4 purchase records per product (supplier, qty, MRP, date, bill/voucher no).
+- Make some products low stock, some overstocked, some with zero sales, so filters show variety.
+- 8 "pending match" items (e.g., "PARA 500 TAB", "AMOXYCLAV 625", "Dolo650") with 2–3 candidate matches each plus a few with none.
+- 6 WhatsApp messages (3 clean lists, 2 with unknown items, 1 image prescription).
+- 8 prescriptions across all statuses.
+- Two sample imports in history: one Completed, one Completed with errors (with row-level errors).
+
+## SCREENS AND BEHAVIOUR
+
+### 1. Dashboard
+Cards: Data as of (per report type: Sales/Purchase/Returns/Stock), Low-stock items count, Pending matches count, WhatsApp needing review, Pending prescriptions, last import status. Each card links to the filtered screen.
+
+### 2. Imports
+- Drag-and-drop zone accepting multiple files. **Really read** the uploaded Excel with SheetJS: show detected report type by header keywords (Sales/Purchase/Sales Return/Stock), row count, and validation results (missing required columns, bad data types, empty required values). If the file is not recognised show a clear rejection reason.
+- Provide a **"Download sample Excel files"** button that generates 4 sample files (Sales, Purchase, Sales Return, Stock) matching the mock columns, so the client can test.
+- Batch table: file, type, status (Queued/Processing/Completed/Completed with errors/Failed), rows read/loaded/rejected, uploaded by, time. Row click opens a detail drawer: reconciliation summary, error list (row, column, message) with "Download errors", buttons **Retry/Reprocess**.
+- Re-uploading the same file shows a "Duplicate file detected" dialog (Block / Override as admin).
+- Simulate processing with a progress bar and steps: Parse → Validate → Normalize → Match → Load.
+
+### 3. Products
+- Table (TanStack): name, group, stock (with as-of date), last-month sales, 3-month avg, stock cover (months), last supplier, last purchase date. Server-style pagination UI, search, multi-column sort (shift-click), column visibility.
+- **Reusable filter bar** (use the same component on Suppliers and Ask): stock qty (below N / zero / range), supplier, stock vs sales (cover < X months, stock > N × avg), product, group, store. Active filters appear as removable chips; filters persist in the URL; "Save view" optional.
+- Buttons: Export Excel (real, respects filters/sort), Print / PDF (print stylesheet + browser print).
+- Product detail page: header (name, group/family, aliases with add/remove), KPI tiles (current stock, last-month sales, 3-month average, stock cover, status "Sufficient / Low / No recent sales"), tooltip showing each formula, **Last 4 purchases** table (supplier, qty, MRP, date, bill/voucher), monthly sales bar chart (12 months), suppliers list for this product, store-wise stock table.
+- Admin-only: Edit group, add alias, **Merge duplicate** (confirmation dialog + audit entry).
+
+### 4. Suppliers
+Supplier search/list (products supplied count, total stock, recent purchase date). Supplier detail: products supplied (stock, sales, avg), recent purchases, and a banner for products with multiple suppliers showing a comparison of last purchase price/MRP per supplier. Same filter bar, export and print.
+
+### 5. Matching Queue
+List of pending items with source (Import/WhatsApp), raw text, status. Opening one shows: the raw text, top candidate matches with similarity score and strength/pack comparison highlighted, and three actions: **Select existing product** (adds alias), **Create new product** (small form), **Skip**. A visible note: "The system never maps uncertain products automatically." After resolving, show a toast "Alias saved. Future imports will map automatically." and decrement the badge.
+
+### 6. Ask (Natural-language query) — SIMULATED
+Input box with example chips: "Items with less than 1 month of stock", "Low stock from supplier Sun Distributors", "Products with no sales in 3 months but stock above 100", "Which suppliers supplied Dolo 650?". Implement a **rule-based parser** (keywords, not an LLM) that converts the text into a JSON filter, shows it as **editable filter chips** with a collapsible "Interpreted as JSON" panel, then runs the same filter engine as the Products screen. For unsupported input (e.g., "What medicine should I give for fever?" or "predict next month's sales") show an **"Unsupported question"** card explaining that the tool only filters business data, gives no medical advice and no forecasting, and lists supported examples. Add a footer: "AI usage (simulated): tokens, estimated cost" and a small admin-only usage table.
+
+### 7. WhatsApp Inbox — SIMULATED
+Two-pane layout: messages list (sender, time, status badge: Received/Parsed/Needs Review/Resolved/Failed) and message detail showing raw text and the parsed lines table (raw text, qty, matched product, status Matched/Needs review/Unknown, actions Confirm / Open in Matching / Ignore). A **"Simulate incoming message"** button where the client can paste any list and watch it get parsed (split by lines, extract numbers as qty, match against the mock master). Image messages show a placeholder image with a **"Create prescription"** button. Show an audit timeline per message. Banner: "Single central WhatsApp number (simulated)".
+
+### 8. Prescriptions
+- Three tabs: **Pending** (Received + Review), **Open** (all not Closed), **Closed**; search by patient/phone/reference; filters by status/date/source.
+- Create/Edit form: patient name, phone, address, prescription information (free text, typed by staff), date/time, source/reference, status, assigned user, optional linked products (shows current stock, informational only).
+- Status stepper: **Received → Review → Process/Print → Closed** with timestamped history and who did it. Reopen requires a reason (admin/pharmacist).
+- Prominent fixed notice: "The system does not interpret prescriptions or recommend or substitute medicines. The pharmacist is responsible for evaluation and dispensing."
+- **Print Preview** button: opens a clean print-ready layout (A5 portrait by default with a toggle for A4 and for a narrow receipt width) containing pharmacy header, patient name, phone, address, date/time, reference, prescription information, linked products, and a pharmacist signature line. A "Print" button calls window.print() with print CSS. Add a note: "Final printing on Epson M104 to be validated on client's PC." Log each print (with a "Reprint" tag on later prints).
+
+### 9. Admin
+Users and roles (static table with the role matrix), Audit log (merges, status changes, prints, exports of patient data), AI usage, Settings (stock cover threshold default 1.0 month, 3-month average mode toggle: "last 3 complete calendar months" vs "rolling 90 days" which genuinely changes the calculated values in the prototype, similarity thresholds).
+
+## CALCULATIONS (implement for real on the mock data so the client can verify)
+- Net sales = Sales − Sales Returns.
+- 3-month average = sum of net sales over the chosen window ÷ 3.
+- Stock cover (months) = current stock ÷ 3-month average; if average is 0 show "No recent sales".
+- Always display "Stock as of <date>".
+
+## ROLE BEHAVIOUR (switcher)
+Admin: all. Manager: no prescriptions. Pharmacist: prescriptions (print/close), read-only products. Staff: product lookup, WhatsApp, create prescription until Review. Hide or disable restricted actions with a tooltip "Not available for this role".
+
+## QUALITY BAR
+Empty states, loading skeletons, error states, keyboard-accessible tables, consistent status badges, no lorem ipsum, realistic names and numbers, no console errors. Every screen has a short "What this screen does" help line at top.
+
+## ADD A "CLIENT CONFIRMATION" PAGE (last sidebar item)
+A checklist of the screens with a "Confirm / Change needed" toggle and comment box per item, plus these **questions for the client**:
+1. Which exact columns do your four Excel reports contain? (upload samples)
+2. Is there a unique product code? Batch and expiry?
+3. How many stores and is location in the data?
+4. How do prescriptions reach you (WhatsApp image, photo, walk-in)?
+5. What must appear on the pharmacist print and on what paper size?
+6. Stock cover threshold and 3-month average definition?
+7. Who may see patient data, merge products, export?
+8. How often do you import, and how large are the files?
+9. How long must messages and prescriptions be retained?
+Export the answers as .json.
+
+## DO NOT
+Do not build a real backend, real auth, real WhatsApp or LLM calls, OCR, forecasting, purchase-order suggestions, accounting, or any medical recommendation. Do not hide that features are simulated.
+
+## DELIVERABLE
+A running Replit app with a short README listing screens, the simulated parts, how to switch roles, and how to download the sample Excel files.

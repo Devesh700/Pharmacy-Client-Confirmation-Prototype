@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Pharmacy Data Platform Prototype"
+description = "A clickable client-confirmation prototype for pharmacy product data management and analytics. Explore realistic sample products, supplier and stock workflows, imports, matching, simulated WhatsApp and Ask tools, prescriptions, admin controls, and a client checklist."
+version = "1.0.0"
+id = "artifacts/pharmacy-confirmation"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21473
+
+[services.development]
+run = "pnpm --filter @workspace/pharmacy-confirmation run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/pharmacy-confirmation", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/pharmacy-confirmation/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21473"
+BASE_PATH = "/"
