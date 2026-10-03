@@ -691,3 +691,10 @@ export const seedReconciliation: ReconciliationDiscrepancy[] = [
     status: 'Pending'
   }
 ];
+
+// Compatibility aliases
+export const seedStores = storeMasters;
+export const productGstMeta = productGstMap;
+export const seedMovements = initialMovements;
+export const seedReconciliations = seedReconciliation;
+export type ReconciliationRow = ReconciliationDiscrepancy;
