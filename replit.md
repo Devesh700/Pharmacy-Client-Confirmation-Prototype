@@ -1,45 +1,45 @@
-# [Project name]
+# Sampada Pharmacy Data Workspace & GST Stock Ledger Prototype
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Desktop-first frontend prototype for an independent multi-store pharmacy business to manage store-wise inventory via immutable stock ledgers, generate GST-compliant retail/B2B tax invoices, reconcile imported ERP stock snapshots, and confirm operational workflows with the client.
 
 ## Run & Operate
+- `pnpm --filter @workspace/pharmacy-confirmation run dev` — runs the Vite dev server on port 3000
+- `pnpm --filter @workspace/pharmacy-confirmation run build` — compiles TypeScript and builds production client assets
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+## Modules & Architecture (Replit Prompt 2 Implemented)
+1. **Per-Store Stock Ledger (`/store-stock`):**
+   - Immutable movement records: `Current stock = latest imported snapshot (opening) + sum(movements)`.
+   - Batch inventory, expiring soon (≤90 days) and expired badges, FEFO auto-selection.
+   - Products × Stores matrix view.
+   - Click-to-open Stock Ledger drawer with running balances.
+   - Stock Adjustments (Damage, Expiry write-off, Count correction, Other).
+   - Inter-Store Transfers (`Draft` → `Dispatched` → `Received` with paired ledger postings).
+   - Reconciliation view comparing system stock against imported ERP snapshot with 1-click variance adjustments.
 
-## Stack
+2. **Counter POS Billing (`/billing`):**
+   - Counter terminal with store selection, customer search/walk-in, doctor name, and prescription link.
+   - Type-ahead product search with automatic FEFO batch selection.
+   - Live stock indicator ("Available after this sale").
+   - Intra-state (CGST + SGST) vs Inter-state (IGST) place of supply calculation.
+   - MRP-inclusive vs Exclusive pricing calculation.
+   - Grand total in figures and words (`Rupees ... Only`).
+   - Payment modes (Cash / UPI / Card / Credit).
+   - Instant stock deduction with visual confirmation toast.
+   - Hard blocks on selling expired batches or exceeding on-hand stock (unless Admin override).
+   - Scheduled drugs (Schedule H/H1) validation requiring doctor name and prescription link.
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+3. **Invoices & Returns (`/invoices`):**
+   - 25 finalized seed invoices across stores with B2B/B2C indicators.
+   - Print preview with toggle between A4 Tax Invoice and 80 mm thermal receipt.
+   - Invoice cancellation (mandatory reason, reverses stock movements, permanently keeps number as Cancelled).
+   - Credit Note / Sales Return creation (restores stock to original batch, printable credit note).
 
-## Where things live
+4. **GST Reports (`/gst-reports`):**
+   - Sales Register, GSTR-1 style summary (B2B, B2C, HSN-wise summary), Rate-wise tax breakdown, Purchase register, and Tally-style Stock Summary with Excel export.
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+5. **Roles & Store Scope:**
+   - Persona switcher: **Admin**, **Store Owner**, **Manager**, **Pharmacist**, **Staff**.
+   - Topbar store selector for multi-store vs single-branch operations.
 
-## Architecture decisions
-
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
-
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
-
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+6. **Client Confirmation (`/client-confirmation`):**
+   - Review space with screen-by-screen feedback and **12 CA & Architecture confirmation questions** exportable to JSON.

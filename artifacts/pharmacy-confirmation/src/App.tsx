@@ -68,6 +68,7 @@ import {
   type Customer,
   type StockMovement,
   type Invoice,
+  type InvoiceLine,
   type CreditNote,
   type InterStoreTransfer,
   type ReconciliationRow,
@@ -423,11 +424,11 @@ function App() {
     // 2. App Billing sales & returns
     const appSalesTotal = Math.abs(
       movements
-        .filter(m => m.productId === p && (!storeId || storeId === 'all' || m.storeId === storeId) && m.type === 'Sale' && m.source === 'App Billing')
+        .filter(m => m.productId === p && (!storeId || storeId === 'all' || m.storeId === storeId) && m.type === 'Sale (invoice)' && m.source === 'App Billing')
         .reduce((sum, m) => sum + m.qty, 0)
     );
     const appReturnsTotal = movements
-      .filter(m => m.productId === p && (!storeId || storeId === 'all' || m.storeId === storeId) && (m.type === 'Sales Return' || (m.type === 'Adjustment' && m.ref?.startsWith('CN-'))))
+      .filter(m => m.productId === p && (!storeId || storeId === 'all' || m.storeId === storeId) && (m.type === 'Sales return / credit note' || (m.type === 'Adjustment' && m.ref?.startsWith('CN-'))))
       .reduce((sum, m) => sum + m.qty, 0);
     const netAppSales = Math.max(0, appSalesTotal - appReturnsTotal);
 
@@ -440,7 +441,7 @@ function App() {
       .reduce((n, x) => n + x.sales - x.returns, 0);
     const latestApp = Math.abs(
       movements
-        .filter(m => m.productId === p.id && (!storeFilter || storeFilter === 'all' || m.storeId === storeFilter) && m.type === 'Sale')
+        .filter(m => m.productId === p.id && (!storeFilter || storeFilter === 'all' || m.storeId === storeFilter) && m.type === 'Sale (invoice)')
         .reduce((sum, m) => sum + m.qty, 0)
     );
     const latest = latestErp + latestApp;
@@ -540,18 +541,19 @@ function App() {
       setPrescriptions(prev =>
         prev.map(rx =>
           rx.id === inv.prescriptionId
-            ? { ...rx, linkedInvoiceNo: inv.invoiceNo, status: rx.status === 'Received' ? 'Review' : rx.status }
+            ? { ...rx, linkedInvoiceNo: inv.id, status: rx.status === 'Received' ? 'Review' : rx.status }
             : rx
         )
       );
     }
 
-    const firstItem = inv.items[0];
+    const firstItem = inv.lines[0];
     const prevStock = firstItem ? getStock(firstItem.productId, inv.storeId) : 0;
     const postStock = prevStock - (firstItem?.qty || 0);
+    const storeName = storesMeta.find(s => s.id === inv.storeId)?.name || inv.storeId;
 
-    stampAudit(`Invoice ${inv.invoiceNo} saved for ${inv.customerName} (${money(inv.grandTotal)}) · ${newMovements.length} stock movement(s) posted`);
-    notify(`Stock updated: ${firstItem ? firstItem.productName : 'Item'} (${inv.storeName}) ${prevStock} → ${postStock}`);
+    stampAudit(`Invoice ${inv.id} saved for ${inv.customerName} (${money(inv.grandTotal)}) · ${newMovements.length} stock movement(s) posted`);
+    notify(`Stock updated: ${firstItem ? firstItem.productName : 'Item'} (${storeName}) ${prevStock} → ${postStock}`);
   };
 
   const handleCancelInvoice = (invoiceId: string, reason: string) => {
@@ -559,19 +561,16 @@ function App() {
     if (!inv) return;
 
     // Create reverse Adjustment movements returning stock back to the original batch
-    const reversalMovements: StockMovement[] = inv.items.map(item => ({
-      id: `MOV-REV-${Date.now()}-${item.id}`,
+    const reversalMovements: StockMovement[] = inv.lines.map((item: InvoiceLine) => ({
+      id: `MOV-REV-${Date.now()}-${item.productId}`,
       dateTime: new Date().toISOString().replace('T', ' ').slice(0, 16),
       storeId: inv.storeId,
-      storeName: inv.storeName,
       productId: item.productId,
-      productName: item.productName,
       batch: item.batch,
       expiry: item.expiry,
       qty: item.qty, // positive qty restores stock
-      unit: item.unit,
       type: 'Adjustment',
-      ref: `CANCEL:${inv.invoiceNo}`,
+      ref: `CANCEL:${inv.id}`,
       user: userName,
       source: 'App Billing',
       reason: `Invoice cancellation: ${reason}`
@@ -579,70 +578,69 @@ function App() {
 
     setInvoices(prev => prev.map(i => (i.id === invoiceId ? { ...i, status: 'Cancelled', cancelReason: reason } : i)));
     setMovements(prev => [...reversalMovements, ...prev]);
-    stampAudit(`Invoice ${inv.invoiceNo} cancelled (${reason}) · Reversal movements posted to batch(es)`);
-    notify(`Invoice ${inv.invoiceNo} cancelled. Stock restored to batch(es).`);
+    stampAudit(`Invoice ${inv.id} cancelled (${reason}) · Reversal movements posted to batch(es)`);
+    notify(`Invoice ${inv.id} cancelled. Stock restored to batch(es).`);
   };
 
   const handleCreateCreditNote = (cn: CreditNote, returnMovements: StockMovement[]) => {
     setCreditNotes(prev => [cn, ...prev]);
     setMovements(prev => [...returnMovements, ...prev]);
-    stampAudit(`Credit Note ${cn.creditNoteNo} issued against ${cn.originalInvoiceNo} · Stock returned`);
-    notify(`Credit note ${cn.creditNoteNo} generated and stock restored.`);
+    stampAudit(`Credit Note ${cn.id} issued against ${cn.originalInvoiceId} · Stock returned`);
+    notify(`Credit note ${cn.id} generated and stock restored.`);
   };
 
   const handleAddTransfer = (transfer: InterStoreTransfer) => {
     setTransfers(prev => [transfer, ...prev]);
-    stampAudit(`Transfer ${transfer.id} initiated: ${transfer.fromStoreName} -> ${transfer.toStoreName} (${transfer.productName} × ${transfer.qty})`);
+    const fromName = storesMeta.find(s => s.id === transfer.fromStoreId)?.name || transfer.fromStoreId;
+    const toName = storesMeta.find(s => s.id === transfer.toStoreId)?.name || transfer.toStoreId;
+    const prodName = products.find(p => p.id === transfer.productId)?.name || transfer.productId;
+    stampAudit(`Transfer ${transfer.id} initiated: ${fromName} -> ${toName} (${prodName} × ${transfer.qty})`);
     notify(`Inter-store transfer ${transfer.id} created (${transfer.status})`);
   };
 
   const handleUpdateTransferStatus = (transferId: string, newStatus: 'Draft' | 'Dispatched' | 'Received') => {
     const t = transfers.find(x => x.id === transferId);
     if (!t) return;
+    const fromName = storesMeta.find(s => s.id === t.fromStoreId)?.name || t.fromStoreId;
+    const toName = storesMeta.find(s => s.id === t.toStoreId)?.name || t.toStoreId;
     if (newStatus === 'Dispatched' && t.status === 'Draft') {
       const outMov: StockMovement = {
         id: `MOV-TR-OUT-${Date.now()}`,
         dateTime: new Date().toISOString().replace('T', ' ').slice(0, 16),
         storeId: t.fromStoreId,
-        storeName: t.fromStoreName,
         productId: t.productId,
-        productName: t.productName,
         batch: t.batch,
         expiry: t.expiry,
         qty: -t.qty,
-        unit: 'Tab',
         type: 'Transfer out',
         ref: t.id,
         user: userName,
         source: 'App Billing',
-        reason: `Transfer to ${t.toStoreName}`
+        reason: `Transfer to ${toName}`
       };
       setMovements(prev => [outMov, ...prev]);
-      setTransfers(prev => prev.map(x => (x.id === transferId ? { ...x, status: 'Dispatched', dispatchedAt: new Date().toISOString().replace('T', ' ').slice(0, 16) } : x)));
-      stampAudit(`Transfer ${t.id} dispatched from ${t.fromStoreName}`);
-      notify(`Transfer ${t.id} dispatched; stock deducted from ${t.fromStoreName}`);
+      setTransfers(prev => prev.map(x => (x.id === transferId ? { ...x, status: 'Dispatched' } : x)));
+      stampAudit(`Transfer ${t.id} dispatched from ${fromName}`);
+      notify(`Transfer ${t.id} dispatched; stock deducted from ${fromName}`);
     } else if (newStatus === 'Received' && t.status === 'Dispatched') {
       const inMov: StockMovement = {
         id: `MOV-TR-IN-${Date.now()}`,
         dateTime: new Date().toISOString().replace('T', ' ').slice(0, 16),
         storeId: t.toStoreId,
-        storeName: t.toStoreName,
         productId: t.productId,
-        productName: t.productName,
         batch: t.batch,
         expiry: t.expiry,
         qty: t.qty,
-        unit: 'Tab',
         type: 'Transfer in',
         ref: t.id,
         user: userName,
         source: 'App Billing',
-        reason: `Transfer from ${t.fromStoreName}`
+        reason: `Transfer from ${fromName}`
       };
       setMovements(prev => [inMov, ...prev]);
-      setTransfers(prev => prev.map(x => (x.id === transferId ? { ...x, status: 'Received', receivedAt: new Date().toISOString().replace('T', ' ').slice(0, 16) } : x)));
-      stampAudit(`Transfer ${t.id} received at ${t.toStoreName}`);
-      notify(`Transfer ${t.id} received; stock added to ${t.toStoreName}`);
+      setTransfers(prev => prev.map(x => (x.id === transferId ? { ...x, status: 'Received' } : x)));
+      stampAudit(`Transfer ${t.id} received at ${toName}`);
+      notify(`Transfer ${t.id} received; stock added to ${toName}`);
     }
   };
 
@@ -653,32 +651,32 @@ function App() {
   };
 
   const handleAdjustReconciliation = (row: ReconciliationRow, reason: string) => {
+    const prodName = products.find(p => p.id === row.productId)?.name || row.productId;
+    const batchExpiry = seedBatches.find(b => b.productId === row.productId && b.batch === row.batch)?.expiry || '2026-11';
     const adjMov: StockMovement = {
       id: `MOV-RECON-${Date.now()}`,
       dateTime: new Date().toISOString().replace('T', ' ').slice(0, 16),
       storeId: row.storeId,
-      storeName: row.storeName,
       productId: row.productId,
-      productName: row.productName,
       batch: row.batch,
-      expiry: row.expiry,
+      expiry: batchExpiry,
       qty: row.difference,
-      unit: 'Tab',
       type: 'Adjustment',
-      ref: `RECON:${row.snapshotDate}`,
+      ref: `RECON:2025-06-30`,
       user: userName,
       source: 'App Billing',
       reason: `Reconciliation adjustment: ${reason}`
     };
     setMovements(prev => [adjMov, ...prev]);
     setReconciliations(prev => prev.map(r => (r.id === row.id ? { ...r, status: 'Adjusted' } : r)));
-    stampAudit(`Reconciliation adjustment applied for ${row.productName} (${row.difference > 0 ? '+' : ''}${row.difference})`);
+    stampAudit(`Reconciliation adjustment applied for ${prodName} (${row.difference > 0 ? '+' : ''}${row.difference})`);
     notify(`Adjustment movement posted. System stock now aligns with ERP snapshot.`);
   };
 
   const handleAddMovement = (m: StockMovement) => {
     setMovements(prev => [m, ...prev]);
-    stampAudit(`Stock movement ${m.type} posted: ${m.productName} (${m.batch}) ${m.qty > 0 ? '+' : ''}${m.qty}`);
+    const prodName = products.find(p => p.id === m.productId)?.name || m.productId;
+    stampAudit(`Stock movement ${m.type} posted: ${prodName} (${m.batch}) ${m.qty > 0 ? '+' : ''}${m.qty}`);
     notify(`Stock ledger updated: ${m.type} recorded.`);
   };
 
@@ -944,7 +942,7 @@ function App() {
         product: 'Paracetamol 650 mg (Dolo 650)',
         store: 'Branch 2 (Indiranagar)',
         currentStockInBranch2: `${branch2Stock} units`,
-        batchBreakdown: b2Batches.map(b => ({ batch: b.batch, expiry: b.expiry, stock: b.stock })),
+        batchBreakdown: b2Batches.map(b => ({ batch: b.batch, expiry: b.expiry, stock: b.qty })),
         status: 'VALID_BUSINESS_FILTER'
       });
       setAskJson(true);
@@ -965,7 +963,7 @@ function App() {
         todayDate: '30 Jun 2025',
         totalSalesValue: money(tot),
         billsGenerated: s1Invoices.length,
-        invoices: s1Invoices.map(i => ({ no: i.invoiceNo, customer: i.customerName, total: money(i.grandTotal), mode: i.paymentMode })),
+        invoices: s1Invoices.map(i => ({ no: i.id, customer: i.customerName, total: money(i.grandTotal), mode: i.paymentMode })),
         status: 'VALID_BUSINESS_FILTER'
       });
       setAskJson(true);
@@ -985,11 +983,11 @@ function App() {
         queryIntent: 'EXPIRING_INVENTORY_FILTER',
         window: 'Next 60 days (≤ 31 Aug 2025)',
         affectedBatches: expBatches.map(b => ({
-          product: b.productName,
+          product: products.find(p => p.id === b.productId)?.name || b.productId,
           batch: b.batch,
-          store: b.storeName,
+          store: storesMeta.find(s => s.id === b.storeId)?.name || b.storeId,
           expiry: b.expiry,
-          availableStock: b.stock
+          availableStock: b.qty
         })),
         status: 'VALID_BUSINESS_FILTER'
       });
@@ -1421,7 +1419,7 @@ function App() {
     const st = productStats(p);
 
     // Sales history showing both ERP imports and App Billing with badges
-    const appSalesRows = movements.filter(m => m.productId === p.id && m.type === 'Sale');
+    const appSalesRows = movements.filter(m => m.productId === p.id && m.type === 'Sale (invoice)');
 
     return (
       <>
@@ -1521,7 +1519,7 @@ function App() {
                 {appSalesRows.slice(0, 5).map(m => (
                   <tr key={m.id}>
                     <td className="product-cell">{m.ref} ({m.dateTime})</td>
-                    <td>{m.storeName}</td>
+                    <td>{storesMeta.find(s => s.id === m.storeId)?.name || m.storeId}</td>
                     <td><span className="badge" style={{ background: '#eaf4ee', color: '#276749' }}>App Billing</span></td>
                     <td><b>{Math.abs(m.qty)} units</b></td>
                     <td>Sale (POS)</td>
